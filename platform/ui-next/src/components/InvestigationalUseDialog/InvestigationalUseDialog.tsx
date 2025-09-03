@@ -28,15 +28,18 @@ const InvestigationalUseDialog = ({
         setIsHidden(true);
         break;
       case showDialogOption.AlwaysShowDialog:
-        setIsHidden(!!dialogSessionState);
+        //setIsHidden(!!dialogSessionState);
+        setIsHidden(true);
         break;
       case showDialogOption.ShowOnceAndConfigure:
         if (dialogLocalState) {
           const { expiryDate } = JSON.parse(dialogLocalState);
           const isExpired = new Date() > new Date(expiryDate);
-          setIsHidden(!isExpired);
+          //setIsHidden(!isExpired);
+          setIsHidden(true);
         } else {
-          setIsHidden(false);
+          //setIsHidden(false);
+          setIsHidden(true);
         }
         break;
       default:

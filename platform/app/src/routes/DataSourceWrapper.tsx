@@ -146,12 +146,19 @@ function DataSourceWrapper(props: withAppTypes) {
     }
 
     const queryFilterValues = _getQueryFilterValues(location.search, STUDIES_LIMIT);
+    // const queryFilterValues = {
+    //   ..._getQueryFilterValues(location.search, STUDIES_LIMIT),
+    //   mrn: '9ec70a7d-f114-4982-b90f-43cf0e5d492f', // <--- Рачно додаден
+    // };
 
     // 204: no content
     async function getData() {
       setIsLoading(true);
       log.time(Enums.TimingEnum.SEARCH_TO_LIST);
+      console.log('Querying studies with:', queryFilterValues);
+      console.log('Data source await:', await dataSource.query.studies.search(queryFilterValues));
       const studies = await dataSource.query.studies.search(queryFilterValues);
+      console.log('Studies received:', studies);
 
       setData({
         studies: studies || [],
@@ -260,7 +267,11 @@ function _getQueryFilterValues(query, queryLimit) {
 
   const queryFilterValues = {
     // DCM
-    patientId: query.get('mrn'),
+    PatientID:
+      query.get('patientid') ||
+      query.get('patientId') ||
+      query.get('PatientID') ||
+      query.get('mrn'),
     patientName: query.get('patientname'),
     studyDescription: query.get('description'),
     modalitiesInStudy: query.get('modalities') && query.get('modalities').split(','),

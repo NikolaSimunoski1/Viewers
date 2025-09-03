@@ -1,3 +1,131 @@
+// // ==== JWT bootstrap (без IIFE) ===========================================
+// var PROXY_ROOT = 'http://localhost:3001/api/ohif/dicom-web';
+
+// // земи token од ?token= и зачувај во sessionStorage
+// var __qs = new URLSearchParams(window.location.search);
+// var __urlToken = __qs.get('token');
+// if (__urlToken) {
+//   try { sessionStorage.setItem('viewerToken', __urlToken); } catch (e) {}
+//   // опционално: исчисти token од URL-от (да не остане во history)
+//   try {
+//     __qs.delete('token');
+//     var __clean =
+//       location.origin +
+//       location.pathname +
+//       (__qs.toString() ? '?' + __qs.toString() : '') +
+//       location.hash;
+//     history.replaceState(null, '', __clean);
+//   } catch (e) {}
+// }
+
+// // ќе го користиме и директно во dataSources.headers
+// var __VIEWER_JWT__ =
+//   (typeof window !== 'undefined' && window.__VIEWER_JWT__) ||
+//   sessionStorage.getItem('viewerToken') ||
+//   sessionStorage.getItem('token') ||
+//   localStorage.getItem('token') ||
+//   null;
+
+// // ---- Fallback: додади Authorization за сите XHR кон PROXY_ROOT ----------
+// var __xhrOpen = XMLHttpRequest.prototype.open;
+// XMLHttpRequest.prototype.open = function (method, url) {
+//   this.__hitProxy = typeof url === 'string' && url.indexOf(PROXY_ROOT) === 0;
+//   return __xhrOpen.apply(this, arguments);
+// };
+// var __xhrSend = XMLHttpRequest.prototype.send;
+// XMLHttpRequest.prototype.send = function (body) {
+//   if (this.__hitProxy) {
+//     var t =
+//       __VIEWER_JWT__ ||
+//       sessionStorage.getItem('viewerToken') ||
+//       sessionStorage.getItem('token') ||
+//       localStorage.getItem('token');
+//     if (t) this.setRequestHeader('Authorization', 'Bearer ' + t);
+//   }
+//   return __xhrSend.apply(this, arguments);
+// };
+
+// ==== JWT bootstrap for OHIF + backend proxy ====
+// динамичен PROXY_ROOT за localhost И/ИЛИ LAN IP (пример: 192.168.x.x)
+var PROXY_ROOT = 'http://' + (location.hostname || 'localhost') + ':3001/api/ohif/dicom-web';
+
+(function () {
+  // 1) Земи ?token= и остави го во sessionStorage за OHIF да го „вшмука“
+  var qs = new URLSearchParams(location.search);
+  var t = qs.get('token');
+
+  if (t) {
+    try {
+      sessionStorage.setItem('viewerToken', t);
+      window.__VIEWER_JWT__ = t;
+    } catch (_) {}
+
+    // ВАЖНО: НЕ го бриши веднаш од URL — OHIF сам ќе го тргне после boot.
+    // (како резерва, чистни го по неколку секунди ако сè уште стои)
+    setTimeout(function () {
+      try {
+        var qs2 = new URLSearchParams(location.search);
+        if (qs2.get('token')) {
+          qs2.delete('token');
+          var clean =
+            location.origin +
+            location.pathname +
+            (qs2.toString() ? '?' + qs2.toString() : '') +
+            location.hash;
+          history.replaceState(null, '', clean);
+        }
+      } catch (_) {}
+    }, 3000);
+  } else {
+    window.__VIEWER_JWT__ =
+      sessionStorage.getItem('viewerToken') ||
+      sessionStorage.getItem('token') ||
+      localStorage.getItem('token') ||
+      null;
+  }
+
+  // 2) Инјектирај Authorization за сите повици кон PROXY_ROOT (fetch)
+  var _fetch = window.fetch;
+  window.fetch = function (input, init) {
+    var url = typeof input === 'string' ? input : input && input.url;
+    if (url && url.indexOf(PROXY_ROOT) === 0) {
+      init = init || {};
+      var headers = new Headers(init.headers || {});
+      var tok =
+        window.__VIEWER_JWT__ ||
+        sessionStorage.getItem('viewerToken') ||
+        sessionStorage.getItem('token') ||
+        localStorage.getItem('token');
+      if (tok && !headers.has('Authorization')) {
+        headers.set('Authorization', 'Bearer ' + tok);
+      }
+      init.headers = headers;
+    }
+    return _fetch.call(this, input, init);
+  };
+
+  // 3) Исто и за XHR (како резервен слој)
+  var _open = XMLHttpRequest.prototype.open;
+  XMLHttpRequest.prototype.open = function (method, url) {
+    this.__hitProxy = typeof url === 'string' && url.indexOf(PROXY_ROOT) === 0;
+    return _open.apply(this, arguments);
+  };
+  var _send = XMLHttpRequest.prototype.send;
+  XMLHttpRequest.prototype.send = function (body) {
+    if (this.__hitProxy) {
+      var tok =
+        window.__VIEWER_JWT__ ||
+        sessionStorage.getItem('viewerToken') ||
+        sessionStorage.getItem('token') ||
+        localStorage.getItem('token');
+      if (tok) {
+        this.setRequestHeader('Authorization', 'Bearer ' + tok);
+      }
+    }
+    return _send.apply(this, arguments);
+  };
+})();
+
 /** @type {AppTypes.Config} */
 
 window.config = {
@@ -25,7 +153,7 @@ window.config = {
     // above, the number of requests can be go a lot higher.
     prefetch: 25,
   },
-  // filterQueryParam: false,
+  filterQueryParam: true,
   // Defines multi-monitor layouts
   multimonitor: [
     {
@@ -87,7 +215,7 @@ window.config = {
       ],
     },
   ],
-  defaultDataSourceName: 'dicomweb',
+  defaultDataSourceName: 'orthanc',
   /* Dynamic config allows user to pass "configUrl" query string this allows to load config without recompiling application. The regex will ensure valid configuration source */
   // dangerouslyUseDynamicConfig: {
   //   enabled: true,
@@ -98,173 +226,216 @@ window.config = {
   //   // regex: /(https:\/\/hospital.com(\/[0-9A-Za-z.]+)*)|(https:\/\/othersite.com(\/[0-9A-Za-z.]+)*)/
   //   regex: /.*/,
   // },
+  // dataSources: [
+  //   {
+  //     namespace: '@ohif/extension-default.dataSourcesModule.dicomweb',
+  //     sourceName: 'dicomweb',
+  //     configuration: {
+  //       friendlyName: 'AWS S3 Static wado server',
+  //       name: 'aws',
+  //       wadoUriRoot: 'https://d14fa38qiwhyfd.cloudfront.net/dicomweb',
+  //       qidoRoot: 'https://d14fa38qiwhyfd.cloudfront.net/dicomweb',
+  //       wadoRoot: 'https://d14fa38qiwhyfd.cloudfront.net/dicomweb',
+  //       qidoSupportsIncludeField: false,
+  //       imageRendering: 'wadors',
+  //       thumbnailRendering: 'wadors',
+  //       enableStudyLazyLoad: true,
+  //       supportsFuzzyMatching: true,
+  //       supportsWildcard: false,
+  //       staticWado: true,
+  //       singlepart: 'bulkdata,video',
+  //       // whether the data source should use retrieveBulkData to grab metadata,
+  //       // and in case of relative path, what would it be relative to, options
+  //       // are in the series level or study level (some servers like series some study)
+  //       bulkDataURI: {
+  //         enabled: true,
+  //         relativeResolution: 'studies',
+  //         transform: url => url.replace('/pixeldata.mp4', '/rendered'),
+  //       },
+  //       omitQuotationForMultipartRequest: true,
+  //     },
+  //   },
+
+  //   {
+  //     namespace: '@ohif/extension-default.dataSourcesModule.dicomweb',
+  //     sourceName: 'ohif2',
+  //     configuration: {
+  //       friendlyName: 'AWS S3 Static wado secondary server',
+  //       name: 'aws',
+  //       wadoUriRoot: 'https://dd14fa38qiwhyfd.cloudfront.net/dicomweb',
+  //       qidoRoot: 'https://dd14fa38qiwhyfd.cloudfront.net/dicomweb',
+  //       wadoRoot: 'https://dd14fa38qiwhyfd.cloudfront.net/dicomweb',
+  //       qidoSupportsIncludeField: false,
+  //       supportsReject: false,
+  //       imageRendering: 'wadors',
+  //       thumbnailRendering: 'wadors',
+  //       enableStudyLazyLoad: true,
+  //       supportsFuzzyMatching: false,
+  //       supportsWildcard: true,
+  //       staticWado: true,
+  //       singlepart: 'bulkdata,video',
+  //       // whether the data source should use retrieveBulkData to grab metadata,
+  //       // and in case of relative path, what would it be relative to, options
+  //       // are in the series level or study level (some servers like series some study)
+  //       bulkDataURI: {
+  //         enabled: true,
+  //         relativeResolution: 'studies',
+  //       },
+  //       omitQuotationForMultipartRequest: true,
+  //     },
+  //   },
+  //   {
+  //     namespace: '@ohif/extension-default.dataSourcesModule.dicomweb',
+  //     sourceName: 'ohif3',
+  //     configuration: {
+  //       friendlyName: 'AWS S3 Static wado secondary server',
+  //       name: 'aws',
+  //       wadoUriRoot: 'https://d3t6nz73ql33tx.cloudfront.net/dicomweb',
+  //       qidoRoot: 'https://d3t6nz73ql33tx.cloudfront.net/dicomweb',
+  //       wadoRoot: 'https://d3t6nz73ql33tx.cloudfront.net/dicomweb',
+  //       qidoSupportsIncludeField: false,
+  //       supportsReject: false,
+  //       imageRendering: 'wadors',
+  //       thumbnailRendering: 'wadors',
+  //       enableStudyLazyLoad: true,
+  //       supportsFuzzyMatching: false,
+  //       supportsWildcard: true,
+  //       staticWado: true,
+  //       singlepart: 'bulkdata,video',
+  //       // whether the data source should use retrieveBulkData to grab metadata,
+  //       // and in case of relative path, what would it be relative to, options
+  //       // are in the series level or study level (some servers like series some study)
+  //       bulkDataURI: {
+  //         enabled: true,
+  //         relativeResolution: 'studies',
+  //       },
+  //       omitQuotationForMultipartRequest: true,
+  //     },
+  //   },
+
+  //   {
+  //     namespace: '@ohif/extension-default.dataSourcesModule.dicomweb',
+  //     sourceName: 'local5000',
+  //     configuration: {
+  //       friendlyName: 'Static WADO Local Data',
+  //       name: 'DCM4CHEE',
+  //       qidoRoot: 'http://localhost:5000/dicomweb',
+  //       wadoRoot: 'http://localhost:5000/dicomweb',
+  //       qidoSupportsIncludeField: false,
+  //       supportsReject: true,
+  //       supportsStow: true,
+  //       imageRendering: 'wadors',
+  //       thumbnailRendering: 'wadors',
+  //       enableStudyLazyLoad: true,
+  //       supportsFuzzyMatching: false,
+  //       supportsWildcard: true,
+  //       staticWado: true,
+  //       singlepart: 'video',
+  //       bulkDataURI: {
+  //         enabled: true,
+  //         relativeResolution: 'studies',
+  //       },
+  //     },
+  //   },
+  //   {
+  //     namespace: '@ohif/extension-default.dataSourcesModule.dicomweb',
+  //     sourceName: 'orthanc',
+  //     configuration: {
+  //       friendlyName: 'local Orthanc DICOMWeb Server',
+  //       name: 'DCM4CHEE',
+  //       wadoUriRoot: 'http://localhost/pacs/dicom-web',
+  //       qidoRoot: 'http://localhost/pacs/dicom-web',
+  //       wadoRoot: 'http://localhost/pacs/dicom-web',
+  //       qidoSupportsIncludeField: true,
+  //       supportsReject: true,
+  //       dicomUploadEnabled: true,
+  //       imageRendering: 'wadors',
+  //       thumbnailRendering: 'wadors',
+  //       enableStudyLazyLoad: true,
+  //       supportsFuzzyMatching: true,
+  //       supportsWildcard: true,
+  //       omitQuotationForMultipartRequest: true,
+  //       bulkDataURI: {
+  //         enabled: true,
+  //         // This is an example config that can be used to fix the retrieve URL
+  //         // where it has the wrong prefix (eg a canned prefix).  It is better to
+  //         // just use the correct prefix out of the box, but that is sometimes hard
+  //         // when URLs go through several systems.
+  //         // Example URLS are:
+  //         // "BulkDataURI" : "http://localhost/dicom-web/studies/1.2.276.0.7230010.3.1.2.2344313775.14992.1458058363.6979/series/1.2.276.0.7230010.3.1.3.1901948703.36080.1484835349.617/instances/1.2.276.0.7230010.3.1.4.1901948703.36080.1484835349.618/bulk/00420011",
+  //         // when running on http://localhost:3003 with no server running on localhost.  This can be corrected to:
+  //         // /orthanc/dicom-web/studies/1.2.276.0.7230010.3.1.2.2344313775.14992.1458058363.6979/series/1.2.276.0.7230010.3.1.3.1901948703.36080.1484835349.617/instances/1.2.276.0.7230010.3.1.4.1901948703.36080.1484835349.618/bulk/00420011
+  //         // which is a valid relative URL, and will result in using the http://localhost:3003/orthanc/.... path
+  //         // startsWith: 'http://localhost/',
+  //         // prefixWith: '/orthanc/',
+  //       },
+  //     },
+  //   },
+
+  //   {
+  //     namespace: '@ohif/extension-default.dataSourcesModule.dicomwebproxy',
+  //     sourceName: 'dicomwebproxy',
+  //     configuration: {
+  //       friendlyName: 'dicomweb delegating proxy',
+  //       name: 'dicomwebproxy',
+  //     },
+  //   },
+  //   {
+  //     namespace: '@ohif/extension-default.dataSourcesModule.dicomjson',
+  //     sourceName: 'dicomjson',
+  //     configuration: {
+  //       friendlyName: 'dicom json',
+  //       name: 'json',
+  //     },
+  //   },
+  //   {
+  //     namespace: '@ohif/extension-default.dataSourcesModule.dicomlocal',
+  //     sourceName: 'dicomlocal',
+  //     configuration: {
+  //       friendlyName: 'dicom local',
+  //     },
+  //   },
+  // ],
+
+  // RABOTI DIREKTNO DA CITA FAJLOVI OD ORTHANC SERVER
+  // dataSources: [
+  //   {
+  //     namespace: '@ohif/extension-default.dataSourcesModule.dicomweb',
+  //     sourceName: 'orthanc',
+  //     configuration: {
+  //       friendlyName: 'Local Orthanc DICOMweb',
+  //       qidoRoot: 'http://localhost:8080/dicom-web', // QIDO за студии
+  //       wadoRoot: 'http://localhost:8080/dicom-web', // WADO-RS
+  //       wadoUriRoot: 'http://localhost:8080/dicom-web', // WADO-URI (или RS)
+  //       qidoSupportsIncludeField: true,
+  //       imageRendering: 'wadors',
+  //       thumbnailRendering: 'wadors',
+  //       enableStudyLazyLoad: true,
+  //       supportsFuzzyMatching: true,
+  //       supportsWildcard: true,
+  //       dicomUploadEnabled: true,
+  //     },
+  //   },
+  // ],
+
+  // NIKOLA ZA DA ODI PREKU BACKEND SO PROXY
   dataSources: [
-    {
-      namespace: '@ohif/extension-default.dataSourcesModule.dicomweb',
-      sourceName: 'dicomweb',
-      configuration: {
-        friendlyName: 'AWS S3 Static wado server',
-        name: 'aws',
-        wadoUriRoot: 'https://d14fa38qiwhyfd.cloudfront.net/dicomweb',
-        qidoRoot: 'https://d14fa38qiwhyfd.cloudfront.net/dicomweb',
-        wadoRoot: 'https://d14fa38qiwhyfd.cloudfront.net/dicomweb',
-        qidoSupportsIncludeField: false,
-        imageRendering: 'wadors',
-        thumbnailRendering: 'wadors',
-        enableStudyLazyLoad: true,
-        supportsFuzzyMatching: true,
-        supportsWildcard: false,
-        staticWado: true,
-        singlepart: 'bulkdata,video',
-        // whether the data source should use retrieveBulkData to grab metadata,
-        // and in case of relative path, what would it be relative to, options
-        // are in the series level or study level (some servers like series some study)
-        bulkDataURI: {
-          enabled: true,
-          relativeResolution: 'studies',
-          transform: url => url.replace('/pixeldata.mp4', '/rendered'),
-        },
-        omitQuotationForMultipartRequest: true,
-      },
-    },
-
-    {
-      namespace: '@ohif/extension-default.dataSourcesModule.dicomweb',
-      sourceName: 'ohif2',
-      configuration: {
-        friendlyName: 'AWS S3 Static wado secondary server',
-        name: 'aws',
-        wadoUriRoot: 'https://dd14fa38qiwhyfd.cloudfront.net/dicomweb',
-        qidoRoot: 'https://dd14fa38qiwhyfd.cloudfront.net/dicomweb',
-        wadoRoot: 'https://dd14fa38qiwhyfd.cloudfront.net/dicomweb',
-        qidoSupportsIncludeField: false,
-        supportsReject: false,
-        imageRendering: 'wadors',
-        thumbnailRendering: 'wadors',
-        enableStudyLazyLoad: true,
-        supportsFuzzyMatching: false,
-        supportsWildcard: true,
-        staticWado: true,
-        singlepart: 'bulkdata,video',
-        // whether the data source should use retrieveBulkData to grab metadata,
-        // and in case of relative path, what would it be relative to, options
-        // are in the series level or study level (some servers like series some study)
-        bulkDataURI: {
-          enabled: true,
-          relativeResolution: 'studies',
-        },
-        omitQuotationForMultipartRequest: true,
-      },
-    },
-    {
-      namespace: '@ohif/extension-default.dataSourcesModule.dicomweb',
-      sourceName: 'ohif3',
-      configuration: {
-        friendlyName: 'AWS S3 Static wado secondary server',
-        name: 'aws',
-        wadoUriRoot: 'https://d3t6nz73ql33tx.cloudfront.net/dicomweb',
-        qidoRoot: 'https://d3t6nz73ql33tx.cloudfront.net/dicomweb',
-        wadoRoot: 'https://d3t6nz73ql33tx.cloudfront.net/dicomweb',
-        qidoSupportsIncludeField: false,
-        supportsReject: false,
-        imageRendering: 'wadors',
-        thumbnailRendering: 'wadors',
-        enableStudyLazyLoad: true,
-        supportsFuzzyMatching: false,
-        supportsWildcard: true,
-        staticWado: true,
-        singlepart: 'bulkdata,video',
-        // whether the data source should use retrieveBulkData to grab metadata,
-        // and in case of relative path, what would it be relative to, options
-        // are in the series level or study level (some servers like series some study)
-        bulkDataURI: {
-          enabled: true,
-          relativeResolution: 'studies',
-        },
-        omitQuotationForMultipartRequest: true,
-      },
-    },
-
-    {
-      namespace: '@ohif/extension-default.dataSourcesModule.dicomweb',
-      sourceName: 'local5000',
-      configuration: {
-        friendlyName: 'Static WADO Local Data',
-        name: 'DCM4CHEE',
-        qidoRoot: 'http://localhost:5000/dicomweb',
-        wadoRoot: 'http://localhost:5000/dicomweb',
-        qidoSupportsIncludeField: false,
-        supportsReject: true,
-        supportsStow: true,
-        imageRendering: 'wadors',
-        thumbnailRendering: 'wadors',
-        enableStudyLazyLoad: true,
-        supportsFuzzyMatching: false,
-        supportsWildcard: true,
-        staticWado: true,
-        singlepart: 'video',
-        bulkDataURI: {
-          enabled: true,
-          relativeResolution: 'studies',
-        },
-      },
-    },
     {
       namespace: '@ohif/extension-default.dataSourcesModule.dicomweb',
       sourceName: 'orthanc',
       configuration: {
-        friendlyName: 'local Orthanc DICOMWeb Server',
-        name: 'DCM4CHEE',
-        wadoUriRoot: 'http://localhost/pacs/dicom-web',
-        qidoRoot: 'http://localhost/pacs/dicom-web',
-        wadoRoot: 'http://localhost/pacs/dicom-web',
+        friendlyName: 'Local Orthanc via Backend Proxy',
+        qidoRoot: 'http://localhost:3001/api/ohif/dicom-web',
+        wadoRoot: 'http://localhost:3001/api/ohif/dicom-web',
+        wadoUriRoot: 'http://localhost:3001/api/ohif/dicom-web',
         qidoSupportsIncludeField: true,
-        supportsReject: true,
-        dicomUploadEnabled: true,
         imageRendering: 'wadors',
         thumbnailRendering: 'wadors',
         enableStudyLazyLoad: true,
         supportsFuzzyMatching: true,
         supportsWildcard: true,
-        omitQuotationForMultipartRequest: true,
-        bulkDataURI: {
-          enabled: true,
-          // This is an example config that can be used to fix the retrieve URL
-          // where it has the wrong prefix (eg a canned prefix).  It is better to
-          // just use the correct prefix out of the box, but that is sometimes hard
-          // when URLs go through several systems.
-          // Example URLS are:
-          // "BulkDataURI" : "http://localhost/dicom-web/studies/1.2.276.0.7230010.3.1.2.2344313775.14992.1458058363.6979/series/1.2.276.0.7230010.3.1.3.1901948703.36080.1484835349.617/instances/1.2.276.0.7230010.3.1.4.1901948703.36080.1484835349.618/bulk/00420011",
-          // when running on http://localhost:3003 with no server running on localhost.  This can be corrected to:
-          // /orthanc/dicom-web/studies/1.2.276.0.7230010.3.1.2.2344313775.14992.1458058363.6979/series/1.2.276.0.7230010.3.1.3.1901948703.36080.1484835349.617/instances/1.2.276.0.7230010.3.1.4.1901948703.36080.1484835349.618/bulk/00420011
-          // which is a valid relative URL, and will result in using the http://localhost:3003/orthanc/.... path
-          // startsWith: 'http://localhost/',
-          // prefixWith: '/orthanc/',
-        },
-      },
-    },
-
-    {
-      namespace: '@ohif/extension-default.dataSourcesModule.dicomwebproxy',
-      sourceName: 'dicomwebproxy',
-      configuration: {
-        friendlyName: 'dicomweb delegating proxy',
-        name: 'dicomwebproxy',
-      },
-    },
-    {
-      namespace: '@ohif/extension-default.dataSourcesModule.dicomjson',
-      sourceName: 'dicomjson',
-      configuration: {
-        friendlyName: 'dicom json',
-        name: 'json',
-      },
-    },
-    {
-      namespace: '@ohif/extension-default.dataSourcesModule.dicomlocal',
-      sourceName: 'dicomlocal',
-      configuration: {
-        friendlyName: 'dicom local',
+        // НИШТО headers тука — OHIF OIDC ќе додаде Authorization автоматски.
+        headers: __VIEWER_JWT__ ? { Authorization: 'Bearer ' + __VIEWER_JWT__ } : {},
       },
     },
   ],

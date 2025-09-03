@@ -27,6 +27,7 @@ const StudyListFilter = ({
     });
   };
   const isSortingEnabled = numOfStudies > 0 && numOfStudies <= 100;
+  const shouldFilterVisible = false;
 
   return (
     <React.Fragment>
@@ -54,8 +55,9 @@ const StudyListFilter = ({
               </div>
               <div className="flex h-[34px] flex-row items-center">
                 {/* TODO revisit the completely rounded style of button used for clearing the study list filter - for now use LegacyButton*/}
-                {isFiltering && (
+                {isFiltering && shouldFilterVisible && (
                   <LegacyButton
+                    disabled
                     rounded="full"
                     variant="outlined"
                     color="primaryActive"

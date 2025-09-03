@@ -165,6 +165,7 @@ function mapParams(params, options = {}) {
     // Named
     PatientName: withWildcard(params.patientName),
     //PatientID: withWildcard(params.patientId),
+    PatientID: withWildcard(params.patientId || params.mrn || params.PatientID),
     '00100020': withWildcard(params.patientId), // Temporarily to make the tests pass with dicomweb-server.. Apparently it's broken?
     AccessionNumber: withWildcard(params.accessionNumber),
     StudyDescription: withWildcard(params.studyDescription),
