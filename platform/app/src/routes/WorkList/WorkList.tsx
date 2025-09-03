@@ -49,6 +49,7 @@ const seriesInStudiesMap = new Map();
 /**
  * TODO:
  * - debounce `setFilterValues` (150ms?)
+ * 
  */
 function WorkList({
   data: studies,
