@@ -9,6 +9,7 @@
 
 # Output
 **/dist/
+!platform/app/dist/**
 **/build/
 
 # Dependencies

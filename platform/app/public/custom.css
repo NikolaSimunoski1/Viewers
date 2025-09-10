@@ -1,0 +1,40 @@
+/* корен да има висина */
+html, body, #root {
+  height: 100%;
+  margin: 0;
+}
+
+/* главниот wrapper на апликацијата */
+.ohif-app,
+.appContent,
+.Viewer,
+.ViewerMain,
+.tabContent,
+.gridContent,
+.viewport-grid,
+.ViewportGrid {
+  height: 100%;
+  min-height: 0;   /* важно за flex/grid да не турка на 0 */
+}
+
+/* ако главниот wrapper е flex-column, ослободи простор за grid-от */
+.ohif-app,
+.appContent,
+.Viewer {
+  display: flex;
+  flex-direction: column;
+}
+
+/* grid-от да го заземе целиот преостанат простор */
+.viewport-grid,
+.ViewportGrid {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/* по желба: кога панелите се отворени, спречи да „јадат“ висина */
+.sidebar,
+.left-panel,
+.right-panel {
+  min-height: 0;
+}

@@ -1,0 +1,66 @@
+# syntax=docker/dockerfile:1.7-labs
+
+# ---- Build stage ----
+  FROM node:20.18.1-slim AS builder
+
+  RUN apt-get update && apt-get install -y \
+      build-essential python3 git bash ca-certificates && \
+      rm -rf /var/lib/apt/lists/*
+
+  WORKDIR /usr/src/app
+
+  # Enable Yarn classic
+  RUN corepack enable && corepack prepare yarn@1.22.22 --activate
+
+  # Прво кеширај ги manifest-ите (само во build stage користиме --parents)
+  COPY package.json yarn.lock preinstall.js lerna.json ./
+  COPY --parents ./addOns/package.json ./addOns/*/*/package.json ./extensions/*/package.json ./modes/*/package.json ./platform/*/package.json ./
+
+  # Инсталација со yarn
+  RUN yarn install --frozen-lockfile
+
+  # Копирај го остатокот од кодот
+  COPY . .
+
+  # Build args / env
+  ARG APP_CONFIG=config/default.js
+  ENV APP_CONFIG=${APP_CONFIG}
+
+  ARG PUBLIC_URL=/
+  ENV PUBLIC_URL=${PUBLIC_URL}
+
+  ENV QUICK_BUILD=false
+  ENV GENERATE_SOURCEMAP=false
+  ENV NODE_OPTIONS="--max-old-space-size=4096"
+
+  # Show config (опционално) и build
+  RUN yarn run show:config || true
+  RUN yarn run build
+
+  RUN chmod u+x .docker/compressDist.sh && ./.docker/compressDist.sh
+
+  # ---- Runtime (nginx) ----
+  FROM nginxinc/nginx-unprivileged:1.27-alpine AS final
+
+  ARG PUBLIC_URL=/
+  ENV PUBLIC_URL=${PUBLIC_URL}
+  ARG PORT=80
+  ENV PORT=${PORT}
+
+  # исчисти default конфиг
+  RUN rm /etc/nginx/conf.d/default.conf
+
+  USER nginx
+  COPY --chown=nginx:nginx .docker/Viewer-v3.x /usr/src
+  RUN chmod 777 /usr/src/entrypoint.sh
+
+
+  COPY --from=builder /usr/src/app/platform/app/dist /usr/share/nginx/html${PUBLIC_URL}
+  COPY --from=builder /usr/src/app/platform/app/dist/dicom-microscopy-viewer /usr/share/nginx/html/dicom-microscopy-viewer
+
+  USER root
+  RUN chown -R nginx:nginx /usr/share/nginx/html
+  USER nginx
+
+  ENTRYPOINT ["/usr/src/entrypoint.sh"]
+  CMD ["nginx", "-g", "daemon off;"]

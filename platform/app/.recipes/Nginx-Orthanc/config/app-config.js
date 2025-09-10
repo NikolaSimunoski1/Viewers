@@ -1,3 +1,51 @@
+// // ==== JWT bootstrap (без IIFE) ===========================================
+// var PROXY_ROOT = 'http://localhost:3001/api/ohif/dicom-web';
+
+// // земи token од ?token= и зачувај во sessionStorage
+// var __qs = new URLSearchParams(window.location.search);
+// var __urlToken = __qs.get('token');
+// if (__urlToken) {
+//   try { sessionStorage.setItem('viewerToken', __urlToken); } catch (e) {}
+//   // опционално: исчисти token од URL-от (да не остане во history)
+//   try {
+//     __qs.delete('token');
+//     var __clean =
+//       location.origin +
+//       location.pathname +
+//       (__qs.toString() ? '?' + __qs.toString() : '') +
+//       location.hash;
+//     history.replaceState(null, '', __clean);
+//   } catch (e) {}
+// }
+
+// // ќе го користиме и директно во dataSources.headers
+// var __VIEWER_JWT__ =
+//   (typeof window !== 'undefined' && window.__VIEWER_JWT__) ||
+//   sessionStorage.getItem('viewerToken') ||
+//   sessionStorage.getItem('token') ||
+//   localStorage.getItem('token') ||
+//   null;
+
+// // ---- Fallback: додади Authorization за сите XHR кон PROXY_ROOT ----------
+// var __xhrOpen = XMLHttpRequest.prototype.open;
+// XMLHttpRequest.prototype.open = function (method, url) {
+//   this.__hitProxy = typeof url === 'string' && url.indexOf(PROXY_ROOT) === 0;
+//   return __xhrOpen.apply(this, arguments);
+// };
+// var __xhrSend = XMLHttpRequest.prototype.send;
+// XMLHttpRequest.prototype.send = function (body) {
+//   if (this.__hitProxy) {
+//     var t =
+//       __VIEWER_JWT__ ||
+//       sessionStorage.getItem('viewerToken') ||
+//       sessionStorage.getItem('token') ||
+//       localStorage.getItem('token');
+//     if (t) this.setRequestHeader('Authorization', 'Bearer ' + t);
+//   }
+//   return __xhrSend.apply(this, arguments);
+// };
+
+// ==== JWT bootstrap for OHIF + backend proxy ====
 // динамичен PROXY_ROOT за localhost И/ИЛИ LAN IP (пример: 192.168.x.x)
 var PROXY_ROOT = 'http://' + (location.hostname || 'localhost') + ':3001/api/ohif/dicom-web';
 
@@ -85,7 +133,7 @@ window.config = {
   routerBasename: null,
   // whiteLabeling: {},
   extensions: [],
-  modes: ['@ohif/mode-standard'],
+  modes: [],
   customizationService: {},
   showStudyList: true,
   // some windows systems have issues with more than 3 web workers
@@ -345,6 +393,27 @@ window.config = {
   //     sourceName: 'dicomlocal',
   //     configuration: {
   //       friendlyName: 'dicom local',
+  //     },
+  //   },
+  // ],
+
+  // RABOTI DIREKTNO DA CITA FAJLOVI OD ORTHANC SERVER
+  // dataSources: [
+  //   {
+  //     namespace: '@ohif/extension-default.dataSourcesModule.dicomweb',
+  //     sourceName: 'orthanc',
+  //     configuration: {
+  //       friendlyName: 'Local Orthanc DICOMweb',
+  //       qidoRoot: 'http://localhost:8080/dicom-web', // QIDO за студии
+  //       wadoRoot: 'http://localhost:8080/dicom-web', // WADO-RS
+  //       wadoUriRoot: 'http://localhost:8080/dicom-web', // WADO-URI (или RS)
+  //       qidoSupportsIncludeField: true,
+  //       imageRendering: 'wadors',
+  //       thumbnailRendering: 'wadors',
+  //       enableStudyLazyLoad: true,
+  //       supportsFuzzyMatching: true,
+  //       supportsWildcard: true,
+  //       dicomUploadEnabled: true,
   //     },
   //   },
   // ],

@@ -1,0 +1,8 @@
+services:
+  ohif_viewer:
+    image: ohif/app:v3.9.2
+    ports:
+      - "3000:80"
+    volumes:
+      - ./.docker/app-config.js:/usr/share/nginx/html/app-config.js:ro
+    restart: on-failure
