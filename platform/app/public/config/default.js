@@ -1,5 +1,9 @@
 // динамичен PROXY_ROOT за localhost И/ИЛИ LAN IP (пример: 192.168.x.x)
-var PROXY_ROOT = 'http://' + (location.hostname || 'localhost') + ':3001/api/ohif/dicom-web';
+//var PROXY_ROOT = 'http://' + (location.hostname || 'localhost') + ':3001/api/ohif/dicom-web';
+var PROXY_ROOT =
+  'http://' +
+  (location.hostname || 'http://radiology-backend.cycafadshcddd9fn.westeurope.azurecontainer.io') +
+  '/api/ohif/dicom-web';
 
 (function () {
   // 1) Земи ?token= и остави го во sessionStorage за OHIF да го „вшмука“
@@ -85,7 +89,7 @@ window.config = {
   routerBasename: null,
   // whiteLabeling: {},
   extensions: [],
-  modes: ['@ohif/mode-standard'],
+  modes: [],
   customizationService: {},
   showStudyList: true,
   // some windows systems have issues with more than 3 web workers
@@ -356,9 +360,15 @@ window.config = {
       sourceName: 'orthanc',
       configuration: {
         friendlyName: 'Local Orthanc via Backend Proxy',
-        qidoRoot: 'http://localhost:3001/api/ohif/dicom-web',
-        wadoRoot: 'http://localhost:3001/api/ohif/dicom-web',
-        wadoUriRoot: 'http://localhost:3001/api/ohif/dicom-web',
+        // qidoRoot: 'http://localhost:3001/api/ohif/dicom-web',
+        // wadoRoot: 'http://localhost:3001/api/ohif/dicom-web',
+        // wadoUriRoot: 'http://localhost:3001/api/ohif/dicom-web',
+        qidoRoot:
+          'http://radiology-backend.cycafadshcddd9fn.westeurope.azurecontainer.io/api/ohif/dicom-web',
+        wadoRoot:
+          'http://radiology-backend.cycafadshcddd9fn.westeurope.azurecontainer.io/api/ohif/dicom-web',
+        wadoUriRoot:
+          'http://radiology-backend.cycafadshcddd9fn.westeurope.azurecontainer.io/api/ohif/dicom-web',
         qidoSupportsIncludeField: true,
         imageRendering: 'wadors',
         thumbnailRendering: 'wadors',
